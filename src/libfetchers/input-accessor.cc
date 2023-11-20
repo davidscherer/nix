@@ -14,10 +14,19 @@ StorePath InputAccessor::fetchToStore(
     Activity act(*logger, lvlChatty, actUnknown, fmt("copying '%s' to the store", showPath(path)));
 
     auto source = sinkToSource([&](Sink & sink) {
-        if (method == FileIngestionMethod::Recursive)
-            dumpPath(path, sink, filter ? *filter : defaultPathFilter);
-        else
+        if (method == FileIngestionMethod::Recursive) {
+            PathFilter filter_and_log = [filter](const Path& path) {
+                bool f = (filter ? *filter : defaultPathFilter)(path);
+                if (f) {
+                    printMsg(lvlChatty, "fetching source '%1%'", path);
+                };
+                return f;
+            };
+            dumpPath(path, sink, filter_and_log);
+        } else {
+            printMsg(lvlChatty, "fetching source '%1%'", path);
             readFile(path, sink);
+        }
     });
 
     auto storePath =

@@ -11,6 +11,8 @@
 #include "fs-input-accessor.hh"
 #include "mounted-input-accessor.hh"
 #include "git-utils.hh"
+#include "logging.hh"
+#include "finally.hh"
 
 #include "fetch-settings.hh"
 
@@ -314,6 +316,9 @@ struct GitInputScheme : InputScheme
         runProgram("git", true,
             { "-C", repoInfo.url, "--git-dir", repoInfo.gitDir, "add", "--intent-to-add", "--", std::string(path.rel()) });
 
+        // Pause the logger to allow for user input (such as a gpg passphrase) in `git commit`
+        logger->pause();
+        Finally restoreLogger([]() { logger->resume(); });
         if (commitMsg)
             runProgram("git", true,
                 { "-C", repoInfo.url, "--git-dir", repoInfo.gitDir, "commit", std::string(path.rel()), "-m", *commitMsg });
@@ -518,8 +523,11 @@ struct GitInputScheme : InputScheme
 
             if (doFetch) {
                 try {
-                    auto fetchRef = getAllRefsAttr(input)
+                    auto fetchRef =
+                        getAllRefsAttr(input)
                         ? "refs/*"
+                        : input.getRev()
+                        ? input.getRev()->gitRev()
                         : ref.compare(0, 5, "refs/") == 0
                         ? ref
                         : ref == "HEAD"
@@ -581,6 +589,8 @@ struct GitInputScheme : InputScheme
         verifyCommit(input, repo);
 
         auto accessor = repo->getAccessor(rev);
+
+        accessor->setPathDisplay("«" + input.to_string() + "»");
 
         /* If the repo has submodules, fetch them and return a mounted
            input accessor consisting of the accessor for the top-level
@@ -700,10 +710,22 @@ struct GitInputScheme : InputScheme
 
         auto repoInfo = getRepoInfo(input);
 
-        return
+        auto [accessor, final] =
             input.getRef() || input.getRev() || !repoInfo.isLocal
             ? getAccessorFromCommit(store, repoInfo, std::move(input))
             : getAccessorFromWorkdir(store, repoInfo, std::move(input));
+
+        accessor->fingerprint = final.getFingerprint(store);
+
+        return {accessor, std::move(final)};
+    }
+
+    std::optional<std::string> getFingerprint(ref<Store> store, const Input & input) const override
+    {
+        if (auto rev = input.getRev())
+            return rev->gitRev() + (getSubmodulesAttr(input) ? ";s" : "");
+        else
+            return std::nullopt;
     }
 };
 

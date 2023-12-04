@@ -932,6 +932,7 @@ static RegisterPrimOp primop_tryEval({
 static void prim_getEnv(EvalState & state, const PosIdx pos, Value * * args, Value & v)
 {
     std::string name(state.forceStringNoCtx(*args[0], pos, "while evaluating the first argument passed to builtins.getEnv"));
+    printMsg(lvlChatty, "prim_getEnv '%1%'", name);
     v.mkString(evalSettings.restrictEval || evalSettings.pureEval ? "" : getEnv(name).value_or(""));
 }
 
@@ -1547,6 +1548,7 @@ static void prim_pathExists(EvalState & state, const PosIdx pos, Value * * args,
             || arg.string_view().ends_with("/."));
 
     try {
+        printMsg(lvlChatty, "checking existence of '%1%'", path);
         auto checked = state.checkSourcePath(path);
         auto st = checked.maybeLstat();
         auto exists = st && (!mustBeDir || st->type == SourceAccessor::tDirectory);

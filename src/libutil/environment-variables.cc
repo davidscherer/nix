@@ -8,6 +8,7 @@ namespace nix {
 std::optional<std::string> getEnv(const std::string & key)
 {
     char * value = getenv(key.c_str());
+    printMsg(lvlChatty, "reading environment variable '%1%'", key);
     if (!value) return {};
     return std::string(value);
 }

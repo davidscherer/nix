@@ -1628,6 +1628,7 @@ static RegisterPrimOp primop_dirOf({
 static void prim_readFile(EvalState & state, const PosIdx pos, Value * * args, Value & v)
 {
     auto path = realisePath(state, pos, *args[0]);
+    printMsg(lvlChatty, "prim_readFile '%1%'", path);
     auto s = path.readFile();
     if (s.find((char) 0) != std::string::npos)
         state.debugThrowLastTrace(Error("the contents of the file '%1%' cannot be represented as a Nix string", path));

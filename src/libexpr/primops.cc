@@ -15,6 +15,7 @@
 #include "value-to-json.hh"
 #include "value-to-xml.hh"
 #include "primops.hh"
+#include "impurity.hh"
 
 #include <boost/container/small_vector.hpp>
 #include <nlohmann/json.hpp>
@@ -31,7 +32,6 @@
 #include <cmath>
 
 namespace nix {
-
 
 /*************************************************************
  * Miscellaneous
@@ -933,7 +933,6 @@ static RegisterPrimOp primop_tryEval({
 static void prim_getEnv(EvalState & state, const PosIdx pos, Value * * args, Value & v)
 {
     std::string name(state.forceStringNoCtx(*args[0], pos, "while evaluating the first argument passed to builtins.getEnv"));
-    printMsg(lvlChatty, "prim_getEnv '%1%'", name);
     v.mkString(evalSettings.restrictEval || evalSettings.pureEval ? "" : getEnv(name).value_or(""));
 }
 
@@ -2189,7 +2188,8 @@ static void addPath(
     FileIngestionMethod method,
     const std::optional<Hash> expectedHash,
     Value & v,
-    const NixStringContext & context)
+    const NixStringContext & context,
+    nlohmann::json filter_description)
 {
     try {
         // FIXME: handle CA derivation outputs (where path needs to
@@ -2198,6 +2198,8 @@ static void addPath(
         path = state.toRealPath(rewriteStrings(path, rewrites), context);
 
         StorePathSet refs;
+
+        recordImpurity( { {"sources", { {"path", path}, {"filter_description", filter_description}, {"enter", 1} } } });
 
         if (state.store->isInStore(path)) {
             try {
@@ -2250,6 +2252,8 @@ static void addPath(
             state.allowAndSetStorePathString(dstPath, v);
         } else
             state.allowAndSetStorePathString(*expectedStorePath, v);
+
+        recordImpurity( { {"sources", { {"path", path}, {"enter", -1} } } });
     } catch (Error & e) {
         e.addTrace(state.positions[pos], "while adding path '%s'", path);
         throw;
@@ -2263,7 +2267,7 @@ static void prim_filterSource(EvalState & state, const PosIdx pos, Value * * arg
     auto path = state.coerceToPath(pos, *args[1], context,
         "while evaluating the second argument (the path to filter) passed to 'builtins.filterSource'");
     state.forceFunction(*args[0], pos, "while evaluating the first argument passed to builtins.filterSource");
-    addPath(state, pos, path.baseName(), path.path.abs(), args[0], FileIngestionMethod::Recursive, std::nullopt, v, context);
+    addPath(state, pos, path.baseName(), path.path.abs(), args[0], FileIngestionMethod::Recursive, std::nullopt, v, context, {});
 }
 
 static RegisterPrimOp primop_filterSource({
@@ -2325,6 +2329,7 @@ static void prim_path(EvalState & state, const PosIdx pos, Value * * args, Value
 {
     std::optional<SourcePath> path;
     std::string name;
+    nlohmann::json filter_description = {};
     Value * filterFun = nullptr;
     auto method = FileIngestionMethod::Recursive;
     std::optional<Hash> expectedHash;
@@ -2344,6 +2349,8 @@ static void prim_path(EvalState & state, const PosIdx pos, Value * * args, Value
             method = FileIngestionMethod { state.forceBool(*attr.value, attr.pos, "while evaluating the `recursive` attribute passed to builtins.path") };
         else if (n == "sha256")
             expectedHash = newHashAllowEmpty(state.forceStringNoCtx(*attr.value, attr.pos, "while evaluating the `sha256` attribute passed to builtins.path"), htSHA256);
+        else if (n == "filter_description")
+            filter_description = nlohmann::json::parse( state.forceStringNoCtx(*attr.value, attr.pos, "while evaluating the `filter_description` parameter passed to builtins.path") );
         else
             state.debugThrowLastTrace(EvalError({
                 .msg = hintfmt("unsupported argument '%1%' to 'addPath'", state.symbols[attr.name]),
@@ -2358,7 +2365,7 @@ static void prim_path(EvalState & state, const PosIdx pos, Value * * args, Value
     if (name.empty())
         name = path->baseName();
 
-    addPath(state, pos, name, path->path.abs(), filterFun, method, expectedHash, v, context);
+    addPath(state, pos, name, path->path.abs(), filterFun, method, expectedHash, v, context, filter_description);
 }
 
 static RegisterPrimOp primop_path({
@@ -2396,6 +2403,11 @@ static RegisterPrimOp primop_path({
     .fun = prim_path,
 });
 
+static RegisterPrimOp primop_path_with_filter_description({
+    .name = "__path_with_filter_description",
+    .args = {"args"},
+    .fun = prim_path,
+});
 
 /*************************************************************
  * Sets

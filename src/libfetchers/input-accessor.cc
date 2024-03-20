@@ -1,8 +1,11 @@
 #include "input-accessor.hh"
 #include "store-api.hh"
 #include "cache.hh"
+#include "impurity.hh"
 
 namespace nix {
+
+
 
 StorePath InputAccessor::fetchToStore(
     ref<Store> store,
@@ -32,6 +35,8 @@ StorePath InputAccessor::fetchToStore(
         }
     } else
         debug("source path '%s' is uncacheable", showPath(path));
+    
+        recordImpurity( { {"sources", { {"path", std::string_view(path)}, {"enter", 1} } } });
 
     Activity act(*logger, lvlChatty, actUnknown, fmt("copying '%s' to the store", showPath(path)));
 
@@ -58,6 +63,8 @@ StorePath InputAccessor::fetchToStore(
 
     if (cacheKey)
         fetchers::getCache()->add(store, *cacheKey, {}, storePath, true);
+
+    recordImpurity( { {"sources", { {"path", std::string_view(path)}, {"enter", -1} } } });
 
     return storePath;
 }

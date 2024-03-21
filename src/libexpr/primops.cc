@@ -1015,6 +1015,26 @@ static RegisterPrimOp primop_trace({
     .fun = prim_trace,
 });
 
+static void prim_recordImpurity(EvalState & state, const PosIdx pos, Value * * args, Value & v)
+{
+    // Record the first argument (as json)
+    NixStringContext context;
+    recordImpurity( printValueAsJSON(state, true, *args[0], pos, context, false) );
+
+    // Return the second
+    state.forceValue(*args[1], pos);
+    v = *args[1];
+}
+static RegisterPrimOp primop_recordImpurity({
+    .name = "__recordImpurity",
+    .args = {"description", "value"},
+    .doc = R"(
+      Convert *description* to json and send it to fastenv as an impurity or dependency description.
+      Then return *e2*.  Users of this function should always use (builtins.recordImpurity or (x: y: y))
+      in order to work under regular nix without fastenv.
+    )",
+    .fun = prim_recordImpurity,
+});
 
 /* Takes two arguments and evaluates to the second one. Used as the
  * builtins.traceVerbose implementation when --trace-verbose is not enabled
@@ -2200,7 +2220,7 @@ static void addPath(
 
         StorePathSet refs;
 
-        recordImpurity( { {"sources", { {"path", path}, {"filter_description", filter_description}, {"enter", 1} } } });
+        recordImpurity( { {"files", { {"path", path}, {"filter_description", filter_description}, {"enter", 1} } } });
 
         if (state.store->isInStore(path)) {
             try {
@@ -2254,7 +2274,7 @@ static void addPath(
         } else
             state.allowAndSetStorePathString(*expectedStorePath, v);
 
-        recordImpurity( { {"sources", { {"path", path}, {"enter", -1} } } });
+        recordImpurity( { {"files", { {"path", path}, {"enter", -1} } } });
     } catch (Error & e) {
         e.addTrace(state.positions[pos], "while adding path '%s'", path);
         throw;

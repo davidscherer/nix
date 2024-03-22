@@ -652,7 +652,7 @@ formal
 #include "flake/flake.hh"
 #include "fs-input-accessor.hh"
 #include "memory-input-accessor.hh"
-
+#include "impurity.hh"
 
 namespace nix {
 
@@ -692,6 +692,7 @@ SourcePath resolveExprPath(SourcePath path)
 
     /* If `path' is a symlink, follow it.  This is so that relative
        path references work. */
+    auto originalPath = path;
     while (true) {
         // Basic cycle/depth limit to avoid infinite loops.
         if (++followCount >= maxFollow)
@@ -699,6 +700,13 @@ SourcePath resolveExprPath(SourcePath path)
         if (path.lstat().type != InputAccessor::tSymlink) break;
         path = {path.accessor, CanonPath(path.readLink(), path.path.parent().value_or(CanonPath::root))};
     }
+
+    if (followCount>1) {
+        auto orig = originalPath.getPhysicalPath(), target = path.getPhysicalPath();
+        if (orig && target)
+            recordImpurity({{ "readlink", {{"path", orig->abs()}, {"target", target->abs()}} }});
+    }
+
 
     /* If `path' refers to a directory, append `/default.nix'. */
     if (path.lstat().type == InputAccessor::tDirectory)

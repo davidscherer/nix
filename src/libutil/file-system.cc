@@ -3,6 +3,7 @@
 #include "signals.hh"
 #include "finally.hh"
 #include "serialise.hh"
+#include "impurity.hh"
 
 #include <atomic>
 #include <cerrno>
@@ -62,6 +63,8 @@ Path canonPath(PathView path, bool resolveSymlinks)
        arbitrary (but high) limit to prevent infinite loops. */
     unsigned int followCount = 0, maxFollow = 1024;
 
+    PathView original_path = path;
+
     while (1) {
 
         /* Skip slashes. */
@@ -107,6 +110,9 @@ Path canonPath(PathView path, bool resolveSymlinks)
             }
         }
     }
+
+    if (followCount)
+        recordImpurity({{ "readlink", {{"path", original_path}, {"target", path}} }});
 
     return s.empty() ? "/" : std::move(s);
 }

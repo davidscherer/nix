@@ -1,5 +1,6 @@
 #include "source-accessor.hh"
 #include "archive.hh"
+#include "impurity.hh"
 
 namespace nix {
 
@@ -52,8 +53,10 @@ SourceAccessor::Stat SourceAccessor::lstat(const CanonPath & path)
 {
     if (auto st = maybeLstat(path))
         return *st;
-    else
+    else {
+        recordImpurity({{ "file_presence", {{"path", std::string_view(path)}} }});
         throw Error("path '%s' does not exist", showPath(path));
+    }
 }
 
 void SourceAccessor::setPathDisplay(std::string displayPrefix, std::string displaySuffix)

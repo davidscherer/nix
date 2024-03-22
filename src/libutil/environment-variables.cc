@@ -1,5 +1,6 @@
 #include "util.hh"
 #include "environment-variables.hh"
+#include "impurity.hh"
 
 extern char * * environ __attribute__((weak));
 
@@ -8,7 +9,7 @@ namespace nix {
 std::optional<std::string> getEnv(const std::string & key)
 {
     char * value = getenv(key.c_str());
-    printMsg(lvlChatty, "reading environment variable '%1%'", key);
+    recordImpurity( { {"envvar", key} } );
     if (!value) return {};
     return std::string(value);
 }

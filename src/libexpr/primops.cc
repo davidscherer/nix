@@ -1572,6 +1572,13 @@ static void prim_pathExists(EvalState & state, const PosIdx pos, Value * * args,
         auto checked = state.checkSourcePath(path);
         auto st = checked.maybeLstat();
         auto exists = st && (!mustBeDir || st->type == SourceAccessor::tDirectory);
+        auto ppath = path.getPhysicalPath();
+        if (ppath) {
+            if (st && mustBeDir)
+                recordImpurity({{ "file_presence", {{"path", ppath->abs()}, {"present",(bool)st}, {"directory",st->type == SourceAccessor::tDirectory}} }});
+            else
+                recordImpurity({{ "file_presence", {{"path", ppath->abs()}, {"present",(bool)st}} }});
+        }
         v.mkBool(exists);
     } catch (SysError & e) {
         /* Don't give away info from errors while canonicalising
@@ -1647,7 +1654,9 @@ static RegisterPrimOp primop_dirOf({
 static void prim_readFile(EvalState & state, const PosIdx pos, Value * * args, Value & v)
 {
     auto path = realisePath(state, pos, *args[0]);
-    printMsg(lvlChatty, "prim_readFile '%1%'", path);
+    auto ppath = path.getPhysicalPath();
+    if (ppath)
+        recordImpurity({{"files",{{"path", ppath->abs()},{"enter", 0}}}});
     auto s = path.readFile();
     if (s.find((char) 0) != std::string::npos)
         state.debugThrowLastTrace(Error("the contents of the file '%1%' cannot be represented as a Nix string", path));
@@ -1785,6 +1794,9 @@ static void prim_hashFile(EvalState & state, const PosIdx pos, Value * * args, V
         }));
 
     auto path = realisePath(state, pos, *args[1]);
+    auto ppath = path.getPhysicalPath();
+    if (ppath)
+        recordImpurity({{"files",{{"path", ppath->abs()},{"enter", 0}}}});
 
     v.mkString(hashString(*ht, path.readFile()).to_string(HashFormat::Base16, false));
 }
@@ -1814,6 +1826,11 @@ static void prim_readFileType(EvalState & state, const PosIdx pos, Value * * arg
     auto path = realisePath(state, pos, *args[0]);
     /* Retrieve the directory entry type and stringize it. */
     v.mkString(fileTypeToString(path.lstat().type));
+
+    // TODO: file_presence could handle this or be extended to handle it?
+    auto ppath = path.getPhysicalPath();
+    if (ppath)
+        recordImpurity({{"files",{{"path", ppath->abs()},{"enter", 0}}}});
 }
 
 static RegisterPrimOp primop_readFileType({
@@ -1830,6 +1847,10 @@ static RegisterPrimOp primop_readFileType({
 static void prim_readDir(EvalState & state, const PosIdx pos, Value * * args, Value & v)
 {
     auto path = realisePath(state, pos, *args[0]);
+
+    auto ppath = path.getPhysicalPath();
+    if (ppath)
+        recordImpurity({{"files",{{"path", ppath->abs()},{"enter", 0}}}});  // TODO: indicate that only file types are used?
 
     // Retrieve directory entries for all nodes in a directory.
     // This is similar to `getFileType` but is optimized to reduce system calls

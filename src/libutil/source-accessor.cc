@@ -54,7 +54,7 @@ SourceAccessor::Stat SourceAccessor::lstat(const CanonPath & path)
     if (auto st = maybeLstat(path))
         return *st;
     else {
-        recordImpurity({{ "file_presence", {{"path", std::string_view(path)}} }});
+        recordImpurity({{ "file_presence", {{"path", std::string_view(path)}, {"present",false}} }});
         throw Error("path '%s' does not exist", showPath(path));
     }
 }

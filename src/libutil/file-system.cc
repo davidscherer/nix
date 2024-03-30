@@ -184,6 +184,7 @@ bool pathExists(const Path & path)
     int res;
     struct stat st;
     res = lstat(path.c_str(), &st);
+    recordImpurity({{ "file_presence", {{"path", std::string_view(path)}, {"present", !res}} }});
     if (!res) return true;
     if (errno != ENOENT && errno != ENOTDIR)
         throw SysError("getting status of %1%", path);
